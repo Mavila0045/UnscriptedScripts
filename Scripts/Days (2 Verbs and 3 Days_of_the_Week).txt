@@ -1,0 +1,1 @@
+One minute it's [WEEKDAY], and the next minute it's [WEEKDAY]. And then you [VERB] and [VERB] and it's [DAY_OF_THE_WEEK] again.
