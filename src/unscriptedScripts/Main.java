@@ -1,6 +1,8 @@
 package unscriptedScripts;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Scanner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -105,9 +107,16 @@ public class Main {
 		}
 	}
 	
-	// TODO Prompts user to create a script
+	// Prompts user to create a script
 	public static void createScript(Scanner scanner) {
 		StringBuilder fileContent = new StringBuilder();
+		File directory = new File("Scripts");
+		if(!directory.exists()) {
+			if(!directory.mkdir()) {
+				System.out.println("\nFailed to create " + directory + ". Create folder manually");
+				return;
+			}
+		}
 		
 		System.out.println("Create your script. Remember to enclose words you want to replace in brackets (Ex. [NOUN]):");
 		fileContent.append(scanner.nextLine());
@@ -131,23 +140,39 @@ public class Main {
 				StringBuilder fileContent = new StringBuilder();
 				Pattern pattern = Pattern.compile("\\[([^\\]]+)\\]");
 				
+				Map<String, String> wordReplacements = new HashMap<>();
 				
 				while(fileScanner.hasNextLine()) {
 					String line = fileScanner.nextLine();
-					Matcher matcher = pattern.matcher(line);
+					fileContent.append(line);
 					
-					while(matcher.find()) {
-						String newWord = getUserWord(inputScanner, matcher.group() + ": ");
-						line = line.replaceFirst("\\[([^\\]]+)\\]", newWord);
-						matcher.appendReplacement(fileContent, newWord);
-					}
-					matcher.appendTail(fileContent);
 					if(fileScanner.hasNextLine()) {
 						fileContent.append("\n");
 					}
 				}
 				
-				saveFile(inputScanner, "Stories/", fileContent);
+				Matcher fileMatcher = pattern.matcher(fileContent);
+				
+				while(fileMatcher.find()) {
+					String matchedWord = fileMatcher.group(1);
+					boolean hasDigits = matchedWord.matches(".*\\d.*");
+					
+					if(hasDigits) {
+						if(!wordReplacements.containsKey(matchedWord)) {
+							String newWord = getUserWord(inputScanner, matchedWord, hasDigits);
+							String wordPattern = "\\[" + Pattern.quote(matchedWord) + "\\]";
+	                        fileContent = new StringBuilder(fileContent.toString().replaceAll(wordPattern, Matcher.quoteReplacement(newWord)));
+	                        wordReplacements.put(matchedWord, newWord);
+						}
+					}
+					else {
+						String newWord = getUserWord(inputScanner, matchedWord, hasDigits);
+						String wordPattern = "\\[" + Pattern.quote(matchedWord) + "\\]";
+						fileContent = new StringBuilder(fileContent.toString().replaceFirst(wordPattern, Matcher.quoteReplacement(newWord)));
+					}
+				}
+				
+			saveFile(inputScanner, "Stories/", fileContent);
 			}
 		}
 		catch (FileNotFoundException e) {
@@ -156,11 +181,17 @@ public class Main {
 	}
 	
 	// Prompts user to write a specific word
-	public static String getUserWord(Scanner scanner, String word) {
-		System.out.println("Write a(n) " + word);
+	public static String getUserWord(Scanner scanner, String word, boolean hasDigits) {
+		if(hasDigits) {
+			System.out.println("Write a(n) " + word + " (Note: This word choice will be used more than once): ");
+		}
+		else {
+			System.out.println("Write a(n) " + word + ": ");
+		}
+		
 		String input = scanner.nextLine();
 		
-		return "[" + input + "]";
+		return "{" + input + "}";
 	}
 	
 	// Print the chosen File
@@ -179,7 +210,7 @@ public class Main {
 		
 	}
 	
-	// TODO Creates the file
+	// Creates the file
 	public static void saveFile(Scanner scanner, String directoryPath, StringBuilder fileContent) {
 		System.out.println("\nText:\n" + fileContent);
 		System.out.println("\nSave this as a file [Y/N]?");
