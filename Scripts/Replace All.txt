@@ -1,0 +1,4 @@
+I am a [NOUN]. You are a [NOUN].
+We are a [NOUN1]. They are a [NOUN2]. We are [NOUN1]. They are [NOUN2].
+We are a [NOUN1]. They are a [NOUN2].
+This is hardcoded.

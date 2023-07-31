@@ -1,27 +1,42 @@
 package unscriptedScripts;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Scanner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.BufferedWriter;
+import java.util.Properties;
 
 public class Main {
+	private static final String DEFAULT_CONFIG_FILE = "config.properties";
 	
 	// Main method that boots the program indefinitely
 	public static void main(String[] args) {
-		Scanner scanner = new Scanner(System.in);
+	    try {
+	        Properties config = loadConfig();
+//	        String showText = config.getProperty("showText");
+	        Scanner scanner = new Scanner(System.in);
 		
-		System.out.println("Welcome to Unscripted Scripts\n");
-		while(true) {
-			mainMenu(scanner);
-		}
+	        System.out.println("Welcome to Unscripted Scripts\n");
+	        while(true) {
+	        	mainMenu(scanner, config);
+	        }
+	    } 
+	    catch (IOException e) {
+	        e.printStackTrace();
+	    }
+		
+
 	}
 	
 	// Displays Main Menu
-	public static void mainMenu(Scanner scanner) {
+	public static void mainMenu(Scanner scanner, Properties config) {
 		System.out.println("Select an option:\n"
 				+ "1. Create a Script\n"
 				+ "2. Create a Story\n"
@@ -29,25 +44,29 @@ public class Main {
 				+ "4. Check your Scripts\n"
 				+ "5. Delete a Story\n"
 				+ "6. Delete a Script\n"
-				+ "7. Exit");
+				+ "7. Settings\n"
+				+ "8. Exit");
 		
-		int choice = getInput(scanner, 1, 7);
+		int choice = getInput(scanner, 1, 8);
 		System.out.println();
 		if(choice == 1) {
 			scanner.nextLine();
 			createScript(scanner);
 		}
 		else if(choice == 7) {
+			settings(scanner, config);
+		}
+		else if(choice == 8) {
 			System.exit(0);
 		}
 		else {
-			pickFile(scanner, choice);
+			pickFile(scanner, config, choice);
 		}
 		
 	}
 	
 	// Displays list of Scripts or Stories
-	public static void pickFile(Scanner scanner, int menuNum) {
+	public static void pickFile(Scanner scanner, Properties config, int menuNum) {
 		File directory;
 		if(menuNum == 2 || menuNum == 4 || menuNum == 6) {
 			System.out.println("Pick a Script:");
@@ -81,7 +100,7 @@ public class Main {
 			
 			String filePath = directory + "/" + files[choice - 1].getName();
 			if(menuNum == 2) {
-				createStory(scanner, filePath);
+				createStory(scanner, filePath, config);
 			}
 			else if(menuNum == 3 || menuNum == 4) {
 				readFile(filePath);
@@ -105,9 +124,16 @@ public class Main {
 		}
 	}
 	
-	// TODO Prompts user to create a script
+	// Prompts user to create a script
 	public static void createScript(Scanner scanner) {
 		StringBuilder fileContent = new StringBuilder();
+		File directory = new File("Scripts");
+		if(!directory.exists()) {
+			if(!directory.mkdir()) {
+				System.out.println("\nFailed to create " + directory + ". Create folder manually");
+				return;
+			}
+		}
 		
 		System.out.println("Create your script. Remember to enclose words you want to replace in brackets (Ex. [NOUN]):");
 		fileContent.append(scanner.nextLine());
@@ -124,30 +150,50 @@ public class Main {
 	}
 	
 	// Prompts user to create a story with the chosen script
-	public static void createStory(Scanner inputScanner, String filePath) {
+	public static void createStory(Scanner inputScanner, String filePath, Properties config) {
 		try {
 			File file = new File(filePath);
 			try (Scanner fileScanner = new Scanner(file)) {
 				StringBuilder fileContent = new StringBuilder();
 				Pattern pattern = Pattern.compile("\\[([^\\]]+)\\]");
 				
+				Map<String, String> wordReplacements = new HashMap<>();
 				
 				while(fileScanner.hasNextLine()) {
 					String line = fileScanner.nextLine();
-					Matcher matcher = pattern.matcher(line);
+					fileContent.append(line);
 					
-					while(matcher.find()) {
-						String newWord = getUserWord(inputScanner, matcher.group() + ": ");
-						line = line.replaceFirst("\\[([^\\]]+)\\]", newWord);
-						matcher.appendReplacement(fileContent, newWord);
-					}
-					matcher.appendTail(fileContent);
 					if(fileScanner.hasNextLine()) {
 						fileContent.append("\n");
 					}
 				}
 				
-				saveFile(inputScanner, "Stories/", fileContent);
+				if(Boolean.parseBoolean(config.getProperty("showText"))) {
+					System.out.println(fileContent + "\n");
+				}
+				
+				Matcher fileMatcher = pattern.matcher(fileContent);
+				
+				while(fileMatcher.find()) {
+					String matchedWord = fileMatcher.group(1);
+					boolean hasDigits = matchedWord.matches(".*\\d.*");
+					
+					if(hasDigits) {
+						if(!wordReplacements.containsKey(matchedWord)) {
+							String newWord = getUserWord(inputScanner, matchedWord, hasDigits);
+							String wordPattern = "\\[" + Pattern.quote(matchedWord) + "\\]";
+	                        fileContent = new StringBuilder(fileContent.toString().replaceAll(wordPattern, Matcher.quoteReplacement(newWord)));
+	                        wordReplacements.put(matchedWord, newWord);
+						}
+					}
+					else {
+						String newWord = getUserWord(inputScanner, matchedWord, hasDigits);
+						String wordPattern = "\\[" + Pattern.quote(matchedWord) + "\\]";
+						fileContent = new StringBuilder(fileContent.toString().replaceFirst(wordPattern, Matcher.quoteReplacement(newWord)));
+					}
+				}
+				
+			saveFile(inputScanner, "Stories/", fileContent);
 			}
 		}
 		catch (FileNotFoundException e) {
@@ -156,11 +202,17 @@ public class Main {
 	}
 	
 	// Prompts user to write a specific word
-	public static String getUserWord(Scanner scanner, String word) {
-		System.out.println("Write a(n) " + word);
+	public static String getUserWord(Scanner scanner, String word, boolean hasDigits) {
+		if(hasDigits) {
+			System.out.println("Write a(n) " + word + " (Note: This word choice will be used more than once): ");
+		}
+		else {
+			System.out.println("Write a(n) " + word + ": ");
+		}
+		
 		String input = scanner.nextLine();
 		
-		return "[" + input + "]";
+		return "{" + input + "}";
 	}
 	
 	// Print the chosen File
@@ -179,7 +231,7 @@ public class Main {
 		
 	}
 	
-	// TODO Creates the file
+	// Creates the file
 	public static void saveFile(Scanner scanner, String directoryPath, StringBuilder fileContent) {
 		System.out.println("\nText:\n" + fileContent);
 		System.out.println("\nSave this as a file [Y/N]?");
@@ -282,6 +334,57 @@ public class Main {
 			return getConfirmation(scanner);
 		}
 	}
+	
+	//Loads the config file
+	public static Properties loadConfig() throws IOException {
+	    Properties properties = new Properties();
+
+	    // Load the config file if it exists
+	    try (FileInputStream inputStream = new FileInputStream(DEFAULT_CONFIG_FILE)) {
+	        properties.load(inputStream);
+	    }
+	    catch (IOException e) {
+	        // Config file not found, create default config
+	        properties.setProperty("showText", "false");
+
+	        // Save the default config to the file
+	        try (FileOutputStream outputStream = new FileOutputStream(DEFAULT_CONFIG_FILE)) {
+	            properties.store(outputStream, "Default Configuration");
+	        }
+	    }
+
+	    return properties;
+	}
+	
+    public static void saveConfig(Properties properties) throws IOException {
+        try (FileOutputStream outputStream = new FileOutputStream(DEFAULT_CONFIG_FILE)) {
+            properties.store(outputStream, "Updated Configuration");
+        }
+    }
+	
+	public static void settings(Scanner scanner, Properties config) {
+		boolean showText = Boolean.parseBoolean(config.getProperty("showText"));
+		
+		System.out.println("Select a setting to change:\n"
+				+ "0. Go back to Main Menu\n"
+				+ "1. Show script text before creating a story: " + showText);
+		int choice = getInput(scanner, 0, 1);
+		System.out.println();
+		if(choice == 0) {
+			return;
+		}
+		else if(choice == 1) {
+			config.setProperty("showText", showText ? "false" : "true");
+	        try {
+				saveConfig(config);
+			}
+	        catch (IOException e) {
+				e.printStackTrace();
+			}
+			settings(scanner, config);
+		}
+	}
+
 	
 	
  
